@@ -5,31 +5,40 @@ import {EventBus} from '../../../services';
 import toolbarComponentStore from "../../../data/toolbar-component-store";
 import notificationService from '../../../modules/notifications/notification-service';
 import notificationStore from "../../../modules/notifications/notification-store";
+import {PackagesApi} from "../../../services/api-client/packages-api";
 
 @Component({
   tag: 'elsa-workflow-toolbar',
   assetsDirs: ['assets']
 })
 export class WorkflowToolbar {
-  @State() public modalState: boolean = false;
   private readonly eventBus: EventBus;
+  private readonly packagesApi: PackagesApi;
+
+  private currentElsaVersion: string;
 
   static NotificationService = notificationService;
 
   constructor() {
     this.eventBus = Container.get(EventBus);
+    this.packagesApi = Container.get(PackagesApi);
+  }
+
+  async componentDidLoad() {
+    var response = await this.packagesApi.getVersion();
+    return this.currentElsaVersion = response.packageVersion;
   }
 
   onNotificationClick = async e => {
     e.stopPropagation();
     await this.eventBus.emit(NotificationEventTypes.Toggle, this);
-    WorkflowToolbar.NotificationService.toogleNotification();
-    this.modalState = !this.modalState;
+    WorkflowToolbar.NotificationService.toggleNotification();
   };
 
   render() {
-    const {notifications, infoPanelBoolean} = notificationStore;
     const logoPath = getAssetPath('./assets/logo.png');
+    const infoPanelBoolean = notificationStore.infoPanelBoolean;
+    
     return (
       <div>
         <nav class="bg-gray-800">
@@ -42,7 +51,7 @@ export class WorkflowToolbar {
                     <a href="#"><img class="h-6 w-6" src={logoPath} alt="Workflow"/></a>
                   </div>
                   <div>
-                    <span class="text-gray-300 text-sm">elsa 3.0.0</span>
+                    <span class="text-gray-300 text-sm">{this.currentElsaVersion}</span>
                   </div>
                 </div>
               </div>
@@ -83,10 +92,8 @@ export class WorkflowToolbar {
           </div>
 
         </nav>
-        <elsa-notifications-manager modalState={this.modalState}></elsa-notifications-manager>
-        {notifications && notifications.map(item => {
-          <elsa-awhile-notifications notification={item}></elsa-awhile-notifications>
-        })}
+        <elsa-notifications-manager modalState={infoPanelBoolean}></elsa-notifications-manager>
+        <elsa-toast-manager></elsa-toast-manager>
       </div>
     );
   }

@@ -3,6 +3,7 @@ using Elsa.Workflows.Core.Helpers;
 using Elsa.Workflows.Core.Models;
 using Elsa.Workflows.Core.State;
 using Elsa.Workflows.Management.Entities;
+using Elsa.Workflows.Runtime.Entities;
 
 namespace Elsa.Workflows.Runtime.Contracts;
 
@@ -33,6 +34,11 @@ public interface IWorkflowRuntime
         object bookmarkPayload,
         TriggerWorkflowsRuntimeOptions options,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tries to start a workflow and returns the result if successful.
+    /// </summary>
+    Task<WorkflowExecutionResult?> TryStartWorkflowAsync(string definitionId, StartWorkflowRuntimeOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resumes an existing workflow instance.
@@ -85,6 +91,13 @@ public interface IWorkflowRuntime
     Task UpdateBookmarksAsync(UpdateBookmarksContext context, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Updates the specified bookmark.
+    /// </summary>
+    /// <param name="bookmark">The bookmark to update.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    Task UpdateBookmarkAsync(StoredBookmark bookmark, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Counts the number of workflow instances based on the provided query args.
     /// </summary>
     Task<int> CountRunningWorkflowsAsync(CountRunningWorkflowsArgs args, CancellationToken cancellationToken = default);
@@ -92,7 +105,15 @@ public interface IWorkflowRuntime
 
 public record StartWorkflowRuntimeOptions(string? CorrelationId = default, IDictionary<string, object>? Input = default, VersionOptions VersionOptions = default, string? TriggerActivityId = default, string? InstanceId = default);
 
-public record ResumeWorkflowRuntimeOptions(string? CorrelationId = default, string? WorkflowInstanceId = default, string? BookmarkId = default, string? ActivityId = default, IDictionary<string, object>? Input = default);
+public record ResumeWorkflowRuntimeOptions(
+    string? CorrelationId = default, 
+    string? WorkflowInstanceId = default, 
+    string? BookmarkId = default, 
+    string? ActivityId = default,
+    string? ActivityNodeId = default,
+    string? ActivityInstanceId = default,
+    string? ActivityHash = default,
+    IDictionary<string, object>? Input = default);
 
 public record CanStartWorkflowResult(string? InstanceId, bool CanStart);
 

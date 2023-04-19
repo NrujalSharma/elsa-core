@@ -8,7 +8,6 @@ import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
 import { InputDefinition, OutputDefinition, WorkflowDefinition, WorkflowDefinitionSummary } from "./modules/workflow-definitions/models/entities";
 import { Activity, ActivityDeletedArgs, ActivitySelectedArgs, ChildActivitySelectedArgs, ContainerSelectedArgs, EditChildActivityArgs, GraphUpdatedArgs, IntellisenseContext, SelectListItem, TabChangedArgs, TabDefinition, Variable, WorkflowExecutionLogRecord, WorkflowInstance, WorkflowInstanceSummary, WorkflowUpdatedArgs } from "./models";
 import { ActivityUpdatedArgs, DeleteActivityRequestedArgs, Widget, WorkflowDefinitionPropsUpdatedArgs, WorkflowDefinitionUpdatedArgs } from "./modules/workflow-definitions/models/ui";
-import { NotificationType } from "./modules/notifications/models";
 import { Button } from "./components/shared/button-group/models";
 import { ActivityInputContext } from "./services/activity-input-driver";
 import { ContextMenuAnchorPoint, ContextMenuItem } from "./components/shared/context-menu/models";
@@ -23,6 +22,7 @@ import { SignedInArgs } from "./modules/login/models";
 import { ModalActionClickArgs, ModalActionDefinition, ModalDialogInstance } from "./components/shared/modal-dialog/models";
 import { ModalType } from "./components/shared/modal-dialog/modal-type";
 import { MonacoValueChangedArgs } from "./components/shared/monaco-editor/monaco-editor";
+import { NotificationType } from "./modules/notifications/models";
 import { PagerData } from "./components/shared/pager/pager";
 import { PanelPosition, PanelStateChangedArgs } from "./components/panel/models";
 import { RenderActivityPropsContext } from "./modules/workflow-definitions/components/models";
@@ -53,9 +53,6 @@ export namespace Components {
         "show": () => Promise<void>;
         "variables": Array<Variable>;
         "workflowDefinitionId": string;
-    }
-    interface ElsaAwhileNotifications {
-        "notification": NotificationType;
     }
     interface ElsaButtonGroup {
         "buttons": Array<Button>;
@@ -193,6 +190,9 @@ export namespace Components {
     interface ElsaMultiTextInput {
         "inputContext": ActivityInputContext;
     }
+    interface ElsaNotificationTemplate {
+        "notification": NotificationType;
+    }
     interface ElsaNotificationsManager {
         "modalState": boolean;
     }
@@ -235,9 +235,18 @@ export namespace Components {
     interface ElsaSwitchEditor {
         "inputContext": ActivityInputContext;
     }
+    interface ElsaToastManager {
+    }
+    interface ElsaToastNotification {
+        "notification": NotificationType;
+        "showDuration": number;
+    }
     interface ElsaTooltip {
         "tooltipContent": any;
-        "tooltipPosition"?: string;
+        /**
+          * Specifying `auto` will default to `bottom`, but will reposition to `top` if the tooltip height runs offscreen
+         */
+        "tooltipPosition"?: 'right' | 'left' | 'top' | 'bottom' | 'auto';
     }
     interface ElsaTypePickerInput {
         "inputContext": ActivityInputContext;
@@ -481,12 +490,6 @@ declare global {
         prototype: HTMLElsaActivityPropertiesEditorElement;
         new (): HTMLElsaActivityPropertiesEditorElement;
     };
-    interface HTMLElsaAwhileNotificationsElement extends Components.ElsaAwhileNotifications, HTMLStencilElement {
-    }
-    var HTMLElsaAwhileNotificationsElement: {
-        prototype: HTMLElsaAwhileNotificationsElement;
-        new (): HTMLElsaAwhileNotificationsElement;
-    };
     interface HTMLElsaButtonGroupElement extends Components.ElsaButtonGroup, HTMLStencilElement {
     }
     var HTMLElsaButtonGroupElement: {
@@ -631,6 +634,12 @@ declare global {
         prototype: HTMLElsaMultiTextInputElement;
         new (): HTMLElsaMultiTextInputElement;
     };
+    interface HTMLElsaNotificationTemplateElement extends Components.ElsaNotificationTemplate, HTMLStencilElement {
+    }
+    var HTMLElsaNotificationTemplateElement: {
+        prototype: HTMLElsaNotificationTemplateElement;
+        new (): HTMLElsaNotificationTemplateElement;
+    };
     interface HTMLElsaNotificationsManagerElement extends Components.ElsaNotificationsManager, HTMLStencilElement {
     }
     var HTMLElsaNotificationsManagerElement: {
@@ -696,6 +705,18 @@ declare global {
     var HTMLElsaSwitchEditorElement: {
         prototype: HTMLElsaSwitchEditorElement;
         new (): HTMLElsaSwitchEditorElement;
+    };
+    interface HTMLElsaToastManagerElement extends Components.ElsaToastManager, HTMLStencilElement {
+    }
+    var HTMLElsaToastManagerElement: {
+        prototype: HTMLElsaToastManagerElement;
+        new (): HTMLElsaToastManagerElement;
+    };
+    interface HTMLElsaToastNotificationElement extends Components.ElsaToastNotification, HTMLStencilElement {
+    }
+    var HTMLElsaToastNotificationElement: {
+        prototype: HTMLElsaToastNotificationElement;
+        new (): HTMLElsaToastNotificationElement;
     };
     interface HTMLElsaTooltipElement extends Components.ElsaTooltip, HTMLStencilElement {
     }
@@ -852,7 +873,6 @@ declare global {
         "elsa-activity-output-editor-dialog-content": HTMLElsaActivityOutputEditorDialogContentElement;
         "elsa-activity-properties": HTMLElsaActivityPropertiesElement;
         "elsa-activity-properties-editor": HTMLElsaActivityPropertiesEditorElement;
-        "elsa-awhile-notifications": HTMLElsaAwhileNotificationsElement;
         "elsa-button-group": HTMLElsaButtonGroupElement;
         "elsa-check-list-input": HTMLElsaCheckListInputElement;
         "elsa-checkbox-input": HTMLElsaCheckboxInputElement;
@@ -877,6 +897,7 @@ declare global {
         "elsa-monaco-editor": HTMLElsaMonacoEditorElement;
         "elsa-multi-line-input": HTMLElsaMultiLineInputElement;
         "elsa-multi-text-input": HTMLElsaMultiTextInputElement;
+        "elsa-notification-template": HTMLElsaNotificationTemplateElement;
         "elsa-notifications-manager": HTMLElsaNotificationsManagerElement;
         "elsa-outcome-picker-input": HTMLElsaOutcomePickerInputElement;
         "elsa-output-picker-input": HTMLElsaOutputPickerInputElement;
@@ -888,6 +909,8 @@ declare global {
         "elsa-slide-over-panel": HTMLElsaSlideOverPanelElement;
         "elsa-studio": HTMLElsaStudioElement;
         "elsa-switch-editor": HTMLElsaSwitchEditorElement;
+        "elsa-toast-manager": HTMLElsaToastManagerElement;
+        "elsa-toast-notification": HTMLElsaToastNotificationElement;
         "elsa-tooltip": HTMLElsaTooltipElement;
         "elsa-type-picker-input": HTMLElsaTypePickerInputElement;
         "elsa-variable-editor-dialog-content": HTMLElsaVariableEditorDialogContentElement;
@@ -936,9 +959,6 @@ declare namespace LocalJSX {
         "outputs"?: Array<OutputDefinition>;
         "variables"?: Array<Variable>;
         "workflowDefinitionId"?: string;
-    }
-    interface ElsaAwhileNotifications {
-        "notification"?: NotificationType;
     }
     interface ElsaButtonGroup {
         "buttons"?: Array<Button>;
@@ -1079,6 +1099,9 @@ declare namespace LocalJSX {
     interface ElsaMultiTextInput {
         "inputContext"?: ActivityInputContext;
     }
+    interface ElsaNotificationTemplate {
+        "notification"?: NotificationType;
+    }
     interface ElsaNotificationsManager {
         "modalState"?: boolean;
     }
@@ -1122,9 +1145,18 @@ declare namespace LocalJSX {
     interface ElsaSwitchEditor {
         "inputContext"?: ActivityInputContext;
     }
+    interface ElsaToastManager {
+    }
+    interface ElsaToastNotification {
+        "notification"?: NotificationType;
+        "showDuration"?: number;
+    }
     interface ElsaTooltip {
         "tooltipContent"?: any;
-        "tooltipPosition"?: string;
+        /**
+          * Specifying `auto` will default to `bottom`, but will reposition to `top` if the tooltip height runs offscreen
+         */
+        "tooltipPosition"?: 'right' | 'left' | 'top' | 'bottom' | 'auto';
     }
     interface ElsaTypePickerInput {
         "inputContext"?: ActivityInputContext;
@@ -1237,7 +1269,6 @@ declare namespace LocalJSX {
         "elsa-activity-output-editor-dialog-content": ElsaActivityOutputEditorDialogContent;
         "elsa-activity-properties": ElsaActivityProperties;
         "elsa-activity-properties-editor": ElsaActivityPropertiesEditor;
-        "elsa-awhile-notifications": ElsaAwhileNotifications;
         "elsa-button-group": ElsaButtonGroup;
         "elsa-check-list-input": ElsaCheckListInput;
         "elsa-checkbox-input": ElsaCheckboxInput;
@@ -1262,6 +1293,7 @@ declare namespace LocalJSX {
         "elsa-monaco-editor": ElsaMonacoEditor;
         "elsa-multi-line-input": ElsaMultiLineInput;
         "elsa-multi-text-input": ElsaMultiTextInput;
+        "elsa-notification-template": ElsaNotificationTemplate;
         "elsa-notifications-manager": ElsaNotificationsManager;
         "elsa-outcome-picker-input": ElsaOutcomePickerInput;
         "elsa-output-picker-input": ElsaOutputPickerInput;
@@ -1273,6 +1305,8 @@ declare namespace LocalJSX {
         "elsa-slide-over-panel": ElsaSlideOverPanel;
         "elsa-studio": ElsaStudio;
         "elsa-switch-editor": ElsaSwitchEditor;
+        "elsa-toast-manager": ElsaToastManager;
+        "elsa-toast-notification": ElsaToastNotification;
         "elsa-tooltip": ElsaTooltip;
         "elsa-type-picker-input": ElsaTypePickerInput;
         "elsa-variable-editor-dialog-content": ElsaVariableEditorDialogContent;
@@ -1308,7 +1342,6 @@ declare module "@stencil/core" {
             "elsa-activity-output-editor-dialog-content": LocalJSX.ElsaActivityOutputEditorDialogContent & JSXBase.HTMLAttributes<HTMLElsaActivityOutputEditorDialogContentElement>;
             "elsa-activity-properties": LocalJSX.ElsaActivityProperties & JSXBase.HTMLAttributes<HTMLElsaActivityPropertiesElement>;
             "elsa-activity-properties-editor": LocalJSX.ElsaActivityPropertiesEditor & JSXBase.HTMLAttributes<HTMLElsaActivityPropertiesEditorElement>;
-            "elsa-awhile-notifications": LocalJSX.ElsaAwhileNotifications & JSXBase.HTMLAttributes<HTMLElsaAwhileNotificationsElement>;
             "elsa-button-group": LocalJSX.ElsaButtonGroup & JSXBase.HTMLAttributes<HTMLElsaButtonGroupElement>;
             "elsa-check-list-input": LocalJSX.ElsaCheckListInput & JSXBase.HTMLAttributes<HTMLElsaCheckListInputElement>;
             "elsa-checkbox-input": LocalJSX.ElsaCheckboxInput & JSXBase.HTMLAttributes<HTMLElsaCheckboxInputElement>;
@@ -1333,6 +1366,7 @@ declare module "@stencil/core" {
             "elsa-monaco-editor": LocalJSX.ElsaMonacoEditor & JSXBase.HTMLAttributes<HTMLElsaMonacoEditorElement>;
             "elsa-multi-line-input": LocalJSX.ElsaMultiLineInput & JSXBase.HTMLAttributes<HTMLElsaMultiLineInputElement>;
             "elsa-multi-text-input": LocalJSX.ElsaMultiTextInput & JSXBase.HTMLAttributes<HTMLElsaMultiTextInputElement>;
+            "elsa-notification-template": LocalJSX.ElsaNotificationTemplate & JSXBase.HTMLAttributes<HTMLElsaNotificationTemplateElement>;
             "elsa-notifications-manager": LocalJSX.ElsaNotificationsManager & JSXBase.HTMLAttributes<HTMLElsaNotificationsManagerElement>;
             "elsa-outcome-picker-input": LocalJSX.ElsaOutcomePickerInput & JSXBase.HTMLAttributes<HTMLElsaOutcomePickerInputElement>;
             "elsa-output-picker-input": LocalJSX.ElsaOutputPickerInput & JSXBase.HTMLAttributes<HTMLElsaOutputPickerInputElement>;
@@ -1344,6 +1378,8 @@ declare module "@stencil/core" {
             "elsa-slide-over-panel": LocalJSX.ElsaSlideOverPanel & JSXBase.HTMLAttributes<HTMLElsaSlideOverPanelElement>;
             "elsa-studio": LocalJSX.ElsaStudio & JSXBase.HTMLAttributes<HTMLElsaStudioElement>;
             "elsa-switch-editor": LocalJSX.ElsaSwitchEditor & JSXBase.HTMLAttributes<HTMLElsaSwitchEditorElement>;
+            "elsa-toast-manager": LocalJSX.ElsaToastManager & JSXBase.HTMLAttributes<HTMLElsaToastManagerElement>;
+            "elsa-toast-notification": LocalJSX.ElsaToastNotification & JSXBase.HTMLAttributes<HTMLElsaToastNotificationElement>;
             "elsa-tooltip": LocalJSX.ElsaTooltip & JSXBase.HTMLAttributes<HTMLElsaTooltipElement>;
             "elsa-type-picker-input": LocalJSX.ElsaTypePickerInput & JSXBase.HTMLAttributes<HTMLElsaTypePickerInputElement>;
             "elsa-variable-editor-dialog-content": LocalJSX.ElsaVariableEditorDialogContent & JSXBase.HTMLAttributes<HTMLElsaVariableEditorDialogContentElement>;

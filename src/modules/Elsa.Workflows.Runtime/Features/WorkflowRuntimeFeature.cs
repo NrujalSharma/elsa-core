@@ -13,7 +13,7 @@ using Elsa.Workflows.Runtime.Contracts;
 using Elsa.Workflows.Runtime.Entities;
 using Elsa.Workflows.Runtime.Handlers;
 using Elsa.Workflows.Runtime.HostedServices;
-using Elsa.Workflows.Runtime.Models;
+using Elsa.Workflows.Runtime.Notifications;
 using Elsa.Workflows.Runtime.Options;
 using Elsa.Workflows.Runtime.Services;
 using Medallion.Threading;
@@ -37,7 +37,7 @@ public class WorkflowRuntimeFeature : FeatureBase
     /// A list of workflow builders configured during application startup.
     /// </summary>
     public IDictionary<string, Func<IServiceProvider, ValueTask<IWorkflow>>> Workflows { get; set; } = new Dictionary<string, Func<IServiceProvider, ValueTask<IWorkflow>>>();
-    
+
     /// <summary>
     /// A factory that instantiates a concrete <see cref="IWorkflowRuntime"/>.
     /// </summary>
@@ -47,12 +47,7 @@ public class WorkflowRuntimeFeature : FeatureBase
     /// A factory that instantiates an <see cref="IWorkflowDispatcher"/>.
     /// </summary>
     public Func<IServiceProvider, IWorkflowDispatcher> WorkflowDispatcher { get; set; } = sp => ActivatorUtilities.CreateInstance<TaskBasedWorkflowDispatcher>(sp);
-
-    /// <summary>
-    /// A factory that instantiates an <see cref="IWorkflowStateStore"/>.
-    /// </summary>
-    public Func<IServiceProvider, IWorkflowStateStore> WorkflowStateStore { get; set; } = sp => ActivatorUtilities.CreateInstance<MemoryWorkflowStateStore>(sp);
-
+    
     /// <summary>
     /// A factory that instantiates an <see cref="IBookmarkStore"/>.
     /// </summary>
@@ -62,17 +57,17 @@ public class WorkflowRuntimeFeature : FeatureBase
     /// A factory that instantiates an <see cref="ITriggerStore"/>.
     /// </summary>
     public Func<IServiceProvider, ITriggerStore> WorkflowTriggerStore { get; set; } = sp => sp.GetRequiredService<MemoryTriggerStore>();
-    
+
     /// <summary>
     /// A factory that instantiates an <see cref="IWorkflowExecutionLogStore"/>.
     /// </summary>
     public Func<IServiceProvider, IWorkflowExecutionLogStore> WorkflowExecutionLogStore { get; set; } = sp => sp.GetRequiredService<MemoryWorkflowExecutionLogStore>();
-    
+
     /// <summary>
     /// A factory that instantiates an <see cref="IDistributedLockProvider"/>.
     /// </summary>
-    public Func<IServiceProvider, IDistributedLockProvider> DistributedLockProvider { get; set; } = _ => new FileDistributedSynchronizationProvider(new DirectoryInfo( Path.Combine(Environment.CurrentDirectory, "App_Data/locks")));
-    
+    public Func<IServiceProvider, IDistributedLockProvider> DistributedLockProvider { get; set; } = _ => new FileDistributedSynchronizationProvider(new DirectoryInfo(Path.Combine(Environment.CurrentDirectory, "App_Data/locks")));
+
     /// <summary>
     /// A factory that instantiates an <see cref="IWorkflowStateExporter"/>.
     /// </summary>
@@ -82,6 +77,11 @@ public class WorkflowRuntimeFeature : FeatureBase
     /// A factory that instantiates an <see cref="ITaskDispatcher"/>.
     /// </summary>
     public Func<IServiceProvider, ITaskDispatcher> RunTaskDispatcher { get; set; } = sp => sp.GetRequiredService<AsynchronousTaskDispatcher>();
+
+    /// <summary>
+    /// A factory that instantiates an <see cref="IBackgroundActivityScheduler"/>.
+    /// </summary>
+    public Func<IServiceProvider, IBackgroundActivityScheduler> BackgroundActivityInvoker { get; set; } = sp => ActivatorUtilities.CreateInstance<LocalBackgroundActivityScheduler>(sp);
 
     /// <summary>
     /// A delegate to configure the <see cref="DistributedLockingOptions"/>.
@@ -109,8 +109,7 @@ public class WorkflowRuntimeFeature : FeatureBase
         Module
             .ConfigureHostedService<RegisterDescriptors>()
             .ConfigureHostedService<RegisterExpressionSyntaxDescriptors>()
-            .ConfigureHostedService<PopulateWorkflowDefinitionStore>()
-            .ConfigureHostedService<PopulateRouteTable>();
+            .ConfigureHostedService<PopulateWorkflowDefinitionStore>();
 
     /// <inheritdoc />
     public override void Apply()
@@ -118,20 +117,21 @@ public class WorkflowRuntimeFeature : FeatureBase
         // Options.
         Services.Configure(DistributedLockingOptions);
         Services.Configure<RuntimeOptions>(options => { options.Workflows = Workflows; });
-        
+
         Services
             // Core.
             .AddSingleton<ITriggerIndexer, TriggerIndexer>()
             .AddSingleton<IWorkflowInstanceFactory, WorkflowInstanceFactory>()
             .AddSingleton<IWorkflowDefinitionService, WorkflowDefinitionService>()
             .AddSingleton<IWorkflowHostFactory, WorkflowHostFactory>()
+            .AddSingleton<IBackgroundActivityInvoker, DefaultBackgroundActivityInvoker>()
             .AddSingleton(WorkflowRuntime)
             .AddSingleton(WorkflowDispatcher)
-            .AddSingleton(WorkflowStateStore)
             .AddSingleton(BookmarkStore)
             .AddSingleton(WorkflowTriggerStore)
             .AddSingleton(WorkflowExecutionLogStore)
             .AddSingleton(RunTaskDispatcher)
+            .AddSingleton(BackgroundActivityInvoker)
             .AddSingleton<ITaskReporter, TaskReporter>()
             .AddSingleton<SynchronousTaskDispatcher>()
             .AddSingleton<AsynchronousTaskDispatcher>()
@@ -142,13 +142,13 @@ public class WorkflowRuntimeFeature : FeatureBase
             .AddMemoryStore<StoredBookmark, MemoryBookmarkStore>()
             .AddMemoryStore<StoredTrigger, MemoryTriggerStore>()
             .AddMemoryStore<WorkflowExecutionLogRecord, MemoryWorkflowExecutionLogStore>()
-            
+
             // Distributed locking.
             .AddSingleton(DistributedLockProvider)
 
             // Workflow definition providers.
             .AddWorkflowDefinitionProvider<ClrWorkflowDefinitionProvider>()
-            
+
             // Workflow state exporter.
             .AddSingleton(WorkflowStateExporter)
 
@@ -161,12 +161,13 @@ public class WorkflowRuntimeFeature : FeatureBase
             .AddNotificationHandler<ResumeDispatchWorkflowActivityHandler, WorkflowExecuted>()
             .AddNotificationHandler<IndexWorkflowTriggersHandler, WorkflowDefinitionPublished>()
             .AddNotificationHandler<IndexWorkflowTriggersHandler, WorkflowDefinitionRetracted>()
+            .AddNotificationHandler<ScheduleBackgroundActivities, WorkflowBookmarksIndexed>()
+            .AddNotificationHandler<CancelBackgroundActivities, WorkflowBookmarksIndexed>()
 
             // Workflow activation strategies.
             .AddSingleton<IWorkflowActivationStrategy, SingletonStrategy>()
             .AddSingleton<IWorkflowActivationStrategy, CorrelatedSingletonStrategy>()
             .AddSingleton<IWorkflowActivationStrategy, CorrelationStrategy>()
             ;
-
     }
 }

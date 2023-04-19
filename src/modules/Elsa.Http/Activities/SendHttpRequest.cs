@@ -7,7 +7,6 @@ using Elsa.Workflows.Core.Attributes;
 using Elsa.Workflows.Core.Contracts;
 using Elsa.Workflows.Core.Models;
 using JetBrains.Annotations;
-using Microsoft.AspNetCore.Http;
 using HttpRequestHeaders = Elsa.Http.Models.HttpRequestHeaders;
 
 namespace Elsa.Http;
@@ -31,7 +30,7 @@ public class FlowSendHttpRequest : SendHttpRequestBase
         var expectedStatusCodes = ExpectedStatusCodes.GetOrDefault(context) ?? new List<int>(0);
         var statusCode = (int)response.StatusCode;
         var hasMatchingStatusCode = expectedStatusCodes.Contains(statusCode);
-        var outcome = hasMatchingStatusCode ? statusCode.ToString() : "Unmatched status code";
+        var outcome = expectedStatusCodes.Any() ? hasMatchingStatusCode ? statusCode.ToString() : "Unmatched status code" : "Done";
 
         await context.CompleteActivityWithOutcomesAsync(outcome);
     }
@@ -112,7 +111,7 @@ public class HttpStatusCodeCase
 /// <summary>
 /// Base class for activities that send HTTP requests.
 /// </summary>
-public abstract class SendHttpRequestBase : Activity<HttpResponse>
+public abstract class SendHttpRequestBase : Activity<HttpResponseMessage>
 {
     /// <summary>
     /// The URL to send the request to.
@@ -172,23 +171,35 @@ public abstract class SendHttpRequestBase : Activity<HttpResponse>
     /// <inheritdoc />
     protected override async ValueTask ExecuteAsync(ActivityExecutionContext context)
     {
-        var request = PrepareRequest(context);
-        var httpClientFactory = context.GetRequiredService<IHttpClientFactory>();
-        var httpClient = httpClientFactory.CreateClient(nameof(SendHttpRequestBase));
-        var cancellationToken = context.CancellationToken;
-        var response = await httpClient.SendAsync(request, cancellationToken);
-        var parsedContent = await ParseContentAsync(context, response.Content);
-
-        context.Set(Result, response);
-        context.Set(ParsedContent, parsedContent);
-
-        await HandleResponseAsync(context, response);
+        await TrySendAsync(context);
     }
 
     /// <summary>
     /// Handles the response.
     /// </summary>
     protected abstract ValueTask HandleResponseAsync(ActivityExecutionContext context, HttpResponseMessage response);
+
+    private async Task TrySendAsync(ActivityExecutionContext context)
+    {
+        var request = PrepareRequest(context);
+        var httpClientFactory = context.GetRequiredService<IHttpClientFactory>();
+        var httpClient = httpClientFactory.CreateClient(nameof(SendHttpRequestBase));
+        var cancellationToken = context.CancellationToken;
+
+        try
+        {
+            var response = await httpClient.SendAsync(request, cancellationToken);
+            var parsedContent = await ParseContentAsync(context, response.Content);
+            context.Set(Result, response);
+            context.Set(ParsedContent, parsedContent);
+
+            await HandleResponseAsync(context, response);
+        }
+        catch (TaskCanceledException e)
+        {
+            context.JournalData.Add("Cancelled", true);
+        }
+    }
 
     private async Task<object?> ParseContentAsync(ActivityExecutionContext context, HttpContent httpContent)
     {

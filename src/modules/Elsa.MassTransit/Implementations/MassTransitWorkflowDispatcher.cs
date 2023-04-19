@@ -1,6 +1,6 @@
 using Elsa.MassTransit.Messages;
 using Elsa.Workflows.Runtime.Contracts;
-using Elsa.Workflows.Runtime.Models;
+using Elsa.Workflows.Runtime.Models.Requests;
 using MassTransit;
 
 namespace Elsa.MassTransit.Implementations;
@@ -40,6 +40,9 @@ public class MassTransitWorkflowDispatcher : IWorkflowDispatcher
             request.InstanceId,
             request.BookmarkId,
             request.ActivityId,
+            request.ActivityNodeId,
+            request.ActivityInstanceId,
+            request.ActivityHash,
             request.Input,
             request.CorrelationId
         ), cancellationToken);

@@ -3,7 +3,6 @@ using Elsa.Common.Entities;
 using Elsa.Common.Models;
 using Elsa.Workflows.Api.Mappers;
 using Elsa.Workflows.Core.Contracts;
-using Elsa.Workflows.Core.Serialization;
 using Elsa.Workflows.Core.Serialization.Converters;
 using Elsa.Workflows.Management.Contracts;
 using Microsoft.AspNetCore.Http;
@@ -13,12 +12,12 @@ namespace Elsa.Workflows.Api.Endpoints.WorkflowDefinitions.Get;
 internal class Get : ElsaEndpoint<Request>
 {
     private readonly IWorkflowDefinitionStore _store;
-    private readonly SerializerOptionsProvider _serializerOptionsProvider;
+    private readonly IApiSerializer _apiSerializer;
 
-    public Get(IWorkflowDefinitionStore store, SerializerOptionsProvider serializerOptionsProvider)
+    public Get(IWorkflowDefinitionStore store, IApiSerializer apiSerializer)
     {
         _store = store;
-        _serializerOptionsProvider = serializerOptionsProvider;
+        _apiSerializer = apiSerializer;
     }
 
     public override void Configure()
@@ -48,7 +47,7 @@ internal class Get : ElsaEndpoint<Request>
 
         var mapper = new WorkflowDefinitionMapper();
         var response = await mapper.FromEntityAsync(definition, cancellationToken);
-        var serializerOptions = _serializerOptionsProvider.CreateApiOptions();
+        var serializerOptions = _apiSerializer.CreateOptions();
 
         // If the root of composite activities is not requested, exclude them from being serialized.
         if (!request.IncludeCompositeRoot)

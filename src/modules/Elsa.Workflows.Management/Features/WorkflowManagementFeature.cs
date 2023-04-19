@@ -10,7 +10,6 @@ using Elsa.Features.Services;
 using Elsa.Mediator.Features;
 using Elsa.Workflows.Core.Contracts;
 using Elsa.Workflows.Core.Features;
-using Elsa.Workflows.Core.Serialization;
 using Elsa.Workflows.Management.Activities.WorkflowDefinitionActivity;
 using Elsa.Workflows.Management.Contracts;
 using Elsa.Workflows.Management.Entities;
@@ -103,7 +102,7 @@ public class WorkflowManagementFeature : FeatureBase
     /// Adds the specified variable type to the system.
     /// </summary>
     public WorkflowManagementFeature AddVariableType<T>(string category) => AddVariableType(typeof(T), category);
-    
+
     /// <summary>
     /// Adds the specified variable type to the system.
     /// </summary>
@@ -138,6 +137,7 @@ public class WorkflowManagementFeature : FeatureBase
             .AddMemoryStore<WorkflowInstance, MemoryWorkflowInstanceStore>()
             .AddActivityProvider<TypedActivityProvider>()
             .AddSingleton<IWorkflowDefinitionPublisher, WorkflowDefinitionPublisher>()
+            .AddSingleton<IWorkflowDefinitionImporter, WorkflowDefinitionImporter>()
             .AddSingleton<IWorkflowDefinitionManager, WorkflowDefinitionManager>()
             .AddSingleton<IActivityRegistryPopulator, ActivityRegistryPopulator>()
             .AddSingleton<IExpressionSyntaxRegistry, ExpressionSyntaxRegistry>()
@@ -148,10 +148,9 @@ public class WorkflowManagementFeature : FeatureBase
             .AddSingleton<IWorkflowMaterializer, JsonWorkflowMaterializer>()
             .AddSingleton<IActivityPortResolver, WorkflowDefinitionActivityPortResolver>()
             .AddActivityProvider<WorkflowDefinitionActivityProvider>()
-            .AddSingleton<SerializerOptionsProvider>()
             .AddSingleton<VariableDefinitionMapper>()
             ;
-        
+
         Services.AddNotificationHandlersFrom(GetType());
 
         Services.Configure<ManagementOptions>(options =>

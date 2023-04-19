@@ -25,6 +25,7 @@ services
         {
             identity.IdentityOptions = options => identitySection.Bind(options);
             identity.TokenOptions = options => identityTokenSection.Bind(options);
+            identity.UseAdminUserProvider();
         })
         .UseDefaultAuthentication()
         .UseWorkflowManagement(management => management.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)))
@@ -35,15 +36,14 @@ services
             runtime.UseAsyncWorkflowStateExporter();
         })
         .UseLabels(labels => labels.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)))
-        .UseJobs()
         .UseScheduling()
         .UseJavaScript()
         .UseLiquid()
         .UseHttp()
+        .UseEmail(email => email.ConfigureOptions = options => configuration.GetSection("Smtp").Bind(options))
     );
 
 services.AddHealthChecks();
-services.AddHttpContextAccessor();
 services.AddSingleton<IAuthorizationHandler, LocalHostRequirementHandler>();
 services.AddAuthorization(options => options.AddPolicy(IdentityPolicyNames.SecurityRoot, policy => policy.AddRequirements(new LocalHostRequirement())));
 services.AddCors(cors => cors.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));

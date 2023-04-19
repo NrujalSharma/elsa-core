@@ -12,7 +12,8 @@ public class DefaultWorkflowExecutionContextFactory : IWorkflowExecutionContextF
     private readonly IIdentityGraphService _identityGraphService;
     private readonly IActivitySchedulerFactory _schedulerFactory;
     private readonly IActivityRegistry _activityRegistry;
-    private readonly IWorkflowStateSerializer _workflowStateSerializer;
+    private readonly IWorkflowExecutionContextMapper _workflowExecutionContextMapper;
+    private readonly IHasher _hasher;
 
     /// <summary>
     /// Constructor.
@@ -22,13 +23,15 @@ public class DefaultWorkflowExecutionContextFactory : IWorkflowExecutionContextF
         IIdentityGraphService identityGraphService,
         IActivitySchedulerFactory schedulerFactory,
         IActivityRegistry activityRegistry,
-        IWorkflowStateSerializer workflowStateSerializer)
+        IWorkflowExecutionContextMapper workflowExecutionContextMapper,
+        IHasher hasher)
     {
         _activityVisitor = activityVisitor;
         _identityGraphService = identityGraphService;
         _schedulerFactory = schedulerFactory;
         _activityRegistry = activityRegistry;
-        _workflowStateSerializer = workflowStateSerializer;
+        _workflowExecutionContextMapper = workflowExecutionContextMapper;
+        _hasher = hasher;
     }
 
     /// <inheritdoc />
@@ -64,6 +67,7 @@ public class DefaultWorkflowExecutionContextFactory : IWorkflowExecutionContextF
         // Setup a workflow execution context.
         var workflowExecutionContext = new WorkflowExecutionContext(
             serviceProvider,
+            _hasher,
             instanceId,
             correlationId,
             workflow,
@@ -78,7 +82,7 @@ public class DefaultWorkflowExecutionContextFactory : IWorkflowExecutionContextF
             cancellationToken);
 
         // Restore workflow execution context from state, if provided.
-        if (workflowState != null) _workflowStateSerializer.DeserializeState(workflowExecutionContext, workflowState);
+        if (workflowState != null) _workflowExecutionContextMapper.Apply(workflowExecutionContext, workflowState);
 
         return workflowExecutionContext;
     }

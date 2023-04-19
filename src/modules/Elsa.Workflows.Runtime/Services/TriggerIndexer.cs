@@ -1,17 +1,15 @@
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using Elsa.Expressions.Contracts;
 using Elsa.Expressions.Models;
 using Elsa.Extensions;
 using Elsa.Workflows.Core.Contracts;
 using Elsa.Workflows.Core.Helpers;
 using Elsa.Workflows.Core.Models;
-using Elsa.Workflows.Core.Serialization;
 using Elsa.Workflows.Management.Entities;
 using Elsa.Workflows.Runtime.Comparers;
 using Elsa.Workflows.Runtime.Contracts;
 using Elsa.Workflows.Runtime.Entities;
-using Elsa.Workflows.Runtime.Models;
+using Elsa.Workflows.Runtime.Models.Notifications;
 using Elsa.Workflows.Runtime.Notifications;
 using Microsoft.Extensions.Logging;
 using Open.Linq.AsyncExtensions;
@@ -31,7 +29,6 @@ public class TriggerIndexer : ITriggerIndexer
     private readonly IServiceProvider _serviceProvider;
     private readonly IBookmarkHasher _hasher;
     private readonly ILogger _logger;
-    private readonly JsonSerializerOptions _serializerOptions;
 
     /// <summary>
     /// Constructor.
@@ -45,7 +42,6 @@ public class TriggerIndexer : ITriggerIndexer
         IEventPublisher eventPublisher,
         IServiceProvider serviceProvider,
         IBookmarkHasher hasher,
-        SerializerOptionsProvider serializerOptionsProvider,
         ILogger<TriggerIndexer> logger)
     {
         _activityVisitor = activityVisitor;
@@ -57,7 +53,6 @@ public class TriggerIndexer : ITriggerIndexer
         _hasher = hasher;
         _logger = logger;
         _workflowDefinitionService = workflowDefinitionService;
-        _serializerOptions = serializerOptionsProvider.CreateDefaultOptions();
     }
 
     /// <inheritdoc />
@@ -65,27 +60,6 @@ public class TriggerIndexer : ITriggerIndexer
     {
         var workflow = await _workflowDefinitionService.MaterializeWorkflowAsync(definition, cancellationToken);
         return await IndexTriggersAsync(workflow, cancellationToken);
-    }
-
-
-    /// <inheritdoc />
-    public async Task<IndexedWorkflowTriggers> IndexAllTriggersAsync(CancellationToken cancellationToken = default)
-    {
-        var emptyTriggerList = new List<StoredTrigger>(0);
-
-        // Get current triggers
-        var filter = new TriggerFilter();
-        var allTriggersTriggers = await  _triggerStore.FindManyAsync(filter, cancellationToken);
-
-
-        //workflow definition already deleted so you do not have one
-        var workflow = new Workflow();
-
-        var indexedWorkflow = new IndexedWorkflowTriggers(workflow, allTriggersTriggers.ToList(), emptyTriggerList, emptyTriggerList);
-
-        // Publish event.
-        await _eventPublisher.PublishAsync(new WorkflowTriggersIndexed(indexedWorkflow), cancellationToken);
-        return indexedWorkflow;
     }
 
     /// <inheritdoc />
@@ -204,14 +178,14 @@ public class TriggerIndexer : ITriggerIndexer
         var triggerData = await TryGetTriggerDataAsync(trigger, triggerIndexingContext);
         var triggerTypeName = trigger.Type;
 
-        var triggers = triggerData.Select(x => new StoredTrigger
+        var triggers = triggerData.Select(payload => new StoredTrigger
         {
             Id = _identityGenerator.GenerateId(),
             WorkflowDefinitionId = workflow.Identity.DefinitionId,
             Name = triggerTypeName,
             ActivityId = trigger.Id,
-            Hash = _hasher.Hash(triggerTypeName, x),
-            Data = JsonSerializer.Serialize(x, _serializerOptions)
+            Hash = _hasher.Hash(triggerTypeName, payload),
+            Payload = payload
         });
 
         return triggers.ToList();

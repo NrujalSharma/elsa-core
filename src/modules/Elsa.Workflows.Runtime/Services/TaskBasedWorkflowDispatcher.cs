@@ -1,7 +1,7 @@
 using Elsa.Mediator.Contracts;
 using Elsa.Workflows.Runtime.Commands;
 using Elsa.Workflows.Runtime.Contracts;
-using Elsa.Workflows.Runtime.Models;
+using Elsa.Workflows.Runtime.Models.Requests;
 
 namespace Elsa.Workflows.Runtime.Services;
 
@@ -28,7 +28,8 @@ public class TaskBasedWorkflowDispatcher : IWorkflowDispatcher
             request.VersionOptions,
             request.Input,
             request.CorrelationId,
-            request.InstanceId);
+            request.InstanceId,
+            request.TriggerActivityId);
 
         await _backgroundCommandSender.SendAsync(command, cancellationToken);
         return new DispatchWorkflowDefinitionResponse();
@@ -37,7 +38,16 @@ public class TaskBasedWorkflowDispatcher : IWorkflowDispatcher
     /// <inheritdoc />
     public async Task<DispatchWorkflowInstanceResponse> DispatchAsync(DispatchWorkflowInstanceRequest request, CancellationToken cancellationToken = default)
     {
-        var command = new DispatchWorkflowInstanceCommand(request.InstanceId, request.BookmarkId, request.ActivityId, request.Input, request.CorrelationId);
+        var command = new DispatchWorkflowInstanceCommand(
+            request.InstanceId, 
+            request.BookmarkId, 
+            request.ActivityId,
+            request.ActivityNodeId,
+            request.ActivityInstanceId,
+            request.ActivityHash,
+            request.Input, 
+            request.CorrelationId);
+        
         await _backgroundCommandSender.SendAsync(command, cancellationToken);
         return new DispatchWorkflowInstanceResponse();
     }

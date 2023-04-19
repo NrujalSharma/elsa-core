@@ -1,9 +1,8 @@
-using System.Text.Json;
 using Elsa.Common.Models;
 using Elsa.ProtoActor.Extensions;
 using Elsa.ProtoActor.Protos;
+using Elsa.Workflows.Core.Contracts;
 using Elsa.Workflows.Core.Models;
-using Elsa.Workflows.Core.Serialization;
 using Elsa.Workflows.Core.State;
 using Elsa.Workflows.Runtime.Contracts;
 using Proto;
@@ -20,7 +19,8 @@ public class WorkflowGrain : WorkflowGrainBase
     private const int MaxSnapshotsToKeep = 5;
     private readonly IWorkflowDefinitionService _workflowDefinitionService;
     private readonly IWorkflowHostFactory _workflowHostFactory;
-    private readonly SerializerOptionsProvider _serializerOptionsProvider;
+    private readonly IBookmarkPayloadSerializer _bookmarkPayloadSerializer;
+    private readonly IWorkflowStateSerializer _workflowStateSerializer;
     private readonly Persistence _persistence;
 
     private string _definitionId = default!;
@@ -34,13 +34,15 @@ public class WorkflowGrain : WorkflowGrainBase
     public WorkflowGrain(
         IWorkflowDefinitionService workflowDefinitionService,
         IWorkflowHostFactory workflowHostFactory,
-        SerializerOptionsProvider serializerOptionsProvider,
+        IBookmarkPayloadSerializer bookmarkPayloadSerializer,
+        IWorkflowStateSerializer workflowStateSerializer,
         IProvider provider,
         IContext context) : base(context)
     {
         _workflowDefinitionService = workflowDefinitionService;
         _workflowHostFactory = workflowHostFactory;
-        _serializerOptionsProvider = serializerOptionsProvider;
+        _bookmarkPayloadSerializer = bookmarkPayloadSerializer;
+        _workflowStateSerializer = workflowStateSerializer;
         _persistence = Persistence.WithSnapshotting(provider, Context.ClusterIdentity()!.Identity, ApplySnapshot);
     }
 
@@ -146,8 +148,20 @@ public class WorkflowGrain : WorkflowGrainBase
         var correlationId = request.CorrelationId;
         var bookmarkId = request.BookmarkId.NullIfEmpty();
         var activityId = request.ActivityId.NullIfEmpty();
+        var activityNodeId = request.ActivityNodeId.NullIfEmpty();
+        var activityInstanceId = request.ActivityInstanceId.NullIfEmpty();
+        var activityHash = request.ActivityHash.NullIfEmpty();
         var cancellationToken = Context.CancellationToken;
-        var resumeWorkflowHostOptions = new ResumeWorkflowHostOptions(correlationId, bookmarkId, activityId, _input);
+        
+        var resumeWorkflowHostOptions = new ResumeWorkflowHostOptions(
+            correlationId, 
+            bookmarkId, 
+            activityId, 
+            activityNodeId,
+            activityInstanceId,
+            activityHash,
+            _input);
+        
         var definitionId = _definitionId;
         var versionOptions = VersionOptions.SpecificVersion(_version);
         
@@ -173,10 +187,9 @@ public class WorkflowGrain : WorkflowGrainBase
     }
 
     /// <inheritdoc />
-    public override Task<ExportWorkflowStateResponse> ExportState(ExportWorkflowStateRequest request)
+    public override async Task<ExportWorkflowStateResponse> ExportState(ExportWorkflowStateRequest request)
     {
-        var options = _serializerOptionsProvider.CreatePersistenceOptions();
-        var json = JsonSerializer.Serialize(_workflowHost.WorkflowState, options);
+        var json = await _workflowStateSerializer.SerializeAsync(_workflowHost.WorkflowState);
 
         var response = new ExportWorkflowStateResponse
         {
@@ -186,14 +199,13 @@ public class WorkflowGrain : WorkflowGrainBase
             }
         };
 
-        return Task.FromResult(response);
+        return response;
     }
 
     /// <inheritdoc />
     public override async Task<ImportWorkflowStateResponse> ImportState(ImportWorkflowStateRequest request)
     {
-        var options = _serializerOptionsProvider.CreatePersistenceOptions();
-        var workflowState = JsonSerializer.Deserialize<WorkflowState>(request.SerializedWorkflowState.Text, options)!;
+        var workflowState = await _workflowStateSerializer.DeserializeAsync(request.SerializedWorkflowState.Text);
 
         _workflowState = workflowState;
         _workflowHost.WorkflowState = workflowState;
@@ -208,7 +220,6 @@ public class WorkflowGrain : WorkflowGrainBase
     private void ApplySnapshot(Snapshot snapshot) => (_definitionId, _instanceId, _version, _workflowState, _input) = (WorkflowSnapshot)snapshot.State;
     private async Task SaveSnapshotAsync()
     {
-        
         if (_workflowState.Status == WorkflowStatus.Finished)
             // If the workflow has finished, delete all snapshots.
             await _persistence.DeleteSnapshotsAsync(_persistence.Index);
@@ -230,16 +241,22 @@ public class WorkflowGrain : WorkflowGrainBase
         return await _workflowHostFactory.CreateAsync(workflow, cancellationToken);
     }
 
-    private static IEnumerable<BookmarkDto> Map(IEnumerable<Bookmark> bookmarks) =>
-        bookmarks.Select(x => new BookmarkDto
+    private IEnumerable<BookmarkDto> Map(IEnumerable<Bookmark> bookmarks)
+    {
+        return bookmarks.Select(x =>
         {
-            Id = x.Id,
-            Name = x.Name,
-            ActivityNodeId = x.ActivityNodeId,
-            ActivityInstanceId = x.ActivityInstanceId,
-            Hash = x.Hash,
-            Data = x.Data.EmptyIfNull(),
-            AutoBurn = x.AutoBurn,
-            CallbackMethodName = x.CallbackMethodName.EmptyIfNull()
+            var payloadJson = x.Payload != null ? _bookmarkPayloadSerializer.Serialize(x.Payload) : "";
+            return new BookmarkDto
+            {
+                Id = x.Id,
+                Name = x.Name,
+                ActivityNodeId = x.ActivityNodeId,
+                ActivityInstanceId = x.ActivityInstanceId,
+                Hash = x.Hash,
+                Data = payloadJson,
+                AutoBurn = x.AutoBurn,
+                CallbackMethodName = x.CallbackMethodName.EmptyIfNull()
+            };
         });
+    }
 }

@@ -23,7 +23,7 @@ public class WorkflowDefinitionActivity : Composite, IInitializable
     public string WorkflowDefinitionId { get; set; } = default!;
 
     /// <summary>
-    /// the latest published version number set by the provider. This is used by tooling to let the user know that a newer version is available.
+    /// The latest published version number set by the provider. This is used by tooling to let the user know that a newer version is available.
     /// </summary>
     public int LatestAvailablePublishedVersion { get; set; }
 
@@ -109,15 +109,6 @@ public class WorkflowDefinitionActivity : Composite, IInitializable
 
             if (output == null)
                 return;
-
-            // @Herbert: this caused the variable from being overwritten with null.
-            // So to reproduce the bad behavior, uncomment these lines and run the test.
-            
-            // if (!context.ExpressionExecutionContext.Memory.HasBlock(outputDescriptor.Name))
-            //     continue;
-            //
-            // var outputValue = context.ExpressionExecutionContext.Memory.Blocks[outputDescriptor.Name].Value;
-            // context.Set(output, outputValue);
         }
 
         // Do we have a complete composite signal that triggered the completion?

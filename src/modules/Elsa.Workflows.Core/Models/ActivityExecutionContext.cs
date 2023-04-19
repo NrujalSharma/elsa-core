@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
 using Elsa.Expressions.Helpers;
 using Elsa.Expressions.Models;
 using Elsa.Extensions;
@@ -124,7 +123,7 @@ public class ActivityExecutionContext : IExecutionContext
     /// <summary>
     /// Stores the evaluated inputs for the current activity.
     /// </summary>
-    public IDictionary<string, JsonElement> ActivityState { get; set; } = new Dictionary<string, JsonElement>();
+    public IDictionary<string, object> ActivityState { get; set; } = new Dictionary<string, object>();
 
     public async ValueTask ScheduleActivityAsync(IActivity? activity, ActivityCompletionCallback? completionCallback = default, object? tag = default)
     {
@@ -168,36 +167,36 @@ public class ActivityExecutionContext : IExecutionContext
     public void CreateBookmarks(IEnumerable<object> payloads, ExecuteActivityDelegate? callback = default)
     {
         foreach (var payload in payloads)
-            CreateBookmark(new CreateBookmarkOptions(payload, callback));
+            CreateBookmark(new BookmarkOptions(payload, callback));
     }
 
     public void AddBookmarks(IEnumerable<Bookmark> bookmarks) => _bookmarks.AddRange(bookmarks);
     public void AddBookmark(Bookmark bookmark) => _bookmarks.Add(bookmark);
 
-    public Bookmark CreateBookmark(ExecuteActivityDelegate callback) => CreateBookmark(new CreateBookmarkOptions(default, callback));
-    public Bookmark CreateBookmark(object payload, ExecuteActivityDelegate callback) => CreateBookmark(new CreateBookmarkOptions(payload, callback));
-    public Bookmark CreateBookmark(object payload) => CreateBookmark(new CreateBookmarkOptions(payload));
+    public Bookmark CreateBookmark(ExecuteActivityDelegate callback) => CreateBookmark(new BookmarkOptions(default, callback));
+    public Bookmark CreateBookmark(object payload, ExecuteActivityDelegate callback) => CreateBookmark(new BookmarkOptions(payload, callback));
+    public Bookmark CreateBookmark(object payload) => CreateBookmark(new BookmarkOptions(payload));
 
     /// <summary>
     /// Creates a bookmark so that this activity can be resumed at a later time.
     /// Creating a bookmark will automatically suspend the workflow after all pending activities have executed.
     /// </summary>
-    public Bookmark CreateBookmark(CreateBookmarkOptions? options = default)
+    public Bookmark CreateBookmark(BookmarkOptions? options = default)
     {
         var payload = options?.Payload;
         var callback = options?.Callback;
-        var activityTypeName = options?.ActivityTypeName ?? Activity.Type;
+        var bookmarkName = options?.BookmarkName ?? Activity.Type;
         var bookmarkHasher = GetRequiredService<IBookmarkHasher>();
         var identityGenerator = GetRequiredService<IIdentityGenerator>();
         var payloadSerializer = GetRequiredService<IBookmarkPayloadSerializer>();
-        var payloadJson = payload != null ? payloadSerializer.Serialize(payload) : default;
-        var hash = bookmarkHasher.Hash(activityTypeName, payload);
+        //var payloadJson = payload != null ? payloadSerializer.Serialize(payload) : default;
+        var hash = bookmarkHasher.Hash(bookmarkName, payload);
 
         var bookmark = new Bookmark(
             identityGenerator.GenerateId(),
-            activityTypeName,
+            bookmarkName,
             hash,
-            payloadJson,
+            payload,
             ActivityNode.NodeId,
             Id,
             options?.AutoBurn ?? true,
@@ -246,6 +245,12 @@ public class ActivityExecutionContext : IExecutionContext
         Properties[key] = value;
         return value;
     }
+    
+    /// <summary>
+    /// Removes a property associated with the current activity context.
+    /// </summary>
+    /// <param name="key">The property key.</param>
+    public void RemoveProperty(string key) => Properties.Remove(key);
 
     public T GetRequiredService<T>() where T : notnull => WorkflowExecutionContext.GetRequiredService<T>();
     public object GetRequiredService(Type serviceType) => WorkflowExecutionContext.GetRequiredService(serviceType);

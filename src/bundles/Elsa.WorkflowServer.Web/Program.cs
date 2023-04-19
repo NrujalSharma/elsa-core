@@ -4,6 +4,7 @@ using Elsa.EntityFrameworkCore.Modules.Labels;
 using Elsa.EntityFrameworkCore.Modules.Management;
 using Elsa.EntityFrameworkCore.Modules.Runtime;
 using Elsa.JavaScript.Options;
+using Elsa.WorkflowServer.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 var services = builder.Services;
@@ -16,6 +17,7 @@ var identityTokenSection = identitySection.GetSection("Tokens");
 services
     .AddElsa(elsa => elsa
         .AddActivitiesFrom<Program>()
+        .AddTypeAlias<ApiResponse<User>>("ApiResponse[User]")
         .UseIdentity(identity =>
         {
             identity.IdentityOptions = options => identitySection.Bind(options);
@@ -25,7 +27,13 @@ services
             identity.UseConfigurationBasedRoleProvider(options => identitySection.Bind(options));
         })
         .UseDefaultAuthentication()
-        .UseWorkflowManagement(management => management.UseEntityFrameworkCore(m => m.UseSqlite(sqliteConnectionString)))
+        .UseWorkflowManagement(management =>
+        {
+            management.UseEntityFrameworkCore(m => m.UseSqlite(sqliteConnectionString));
+            management.AddVariableType<ApiResponse<User>>("Api");
+            management.AddVariableType<User>("Api");
+            management.AddVariableType<Support>("Api");
+        })
         .UseWorkflowRuntime(runtime =>
         {
             runtime.UseDefaultRuntime(dr => dr.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)));
@@ -34,20 +42,17 @@ services
             runtime.UseMassTransitDispatcher();
         })
         .UseLabels(labels => labels.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)))
-        .UseJobs(jobs => jobs.ConfigureOptions = options => options.WorkerCount = 10)
-        .UseJobActivities()
         .UseScheduling()
         .UseWorkflowsApi(api => api.AddFastEndpointsAssembly<Program>())
         .UseJavaScript()
         .UseLiquid()
         .UseHttp()
+        .UseEmail(email => email.ConfigureOptions = options => configuration.GetSection("Smtp").Bind(options))
     );
 
 services.Configure<JintOptions>(options => options.AllowClrAccess = true);
-services.AddHandlersFrom<Program>();
 services.AddHealthChecks();
 services.AddCors(cors => cors.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
-services.AddHttpContextAccessor();
 
 // Configure middleware pipeline.
 var app = builder.Build();
@@ -64,9 +69,13 @@ app.MapHealthChecks("/");
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Register Elsa middleware.
+// Elsa API endpoints for designer.
 app.UseWorkflowsApi();
+
+// Captures unhandled exceptions and returns a JSON response.
 app.UseJsonSerializationErrorHandler();
+
+// Elsa HTTP Endpoint activities
 app.UseWorkflows();
 
 // Run.

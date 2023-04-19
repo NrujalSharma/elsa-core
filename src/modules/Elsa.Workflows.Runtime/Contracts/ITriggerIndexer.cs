@@ -1,9 +1,12 @@
 using Elsa.Workflows.Core.Models;
 using Elsa.Workflows.Management.Entities;
-using Elsa.Workflows.Runtime.Models;
+using Elsa.Workflows.Runtime.Models.Notifications;
 
 namespace Elsa.Workflows.Runtime.Contracts;
 
+/// <summary>
+/// Extracts triggers from workflow definitions.
+/// </summary>
 public interface ITriggerIndexer
 {
     /// <summary>
@@ -20,9 +23,4 @@ public interface ITriggerIndexer
     /// Indexes triggers of the specified workflow.
     /// </summary>
     Task<IndexedWorkflowTriggers> IndexTriggersAsync(Workflow workflow, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Send message of all triggers in the trigger store to populate the routetable on startup
-    /// </summary>
-    Task<IndexedWorkflowTriggers> IndexAllTriggersAsync(CancellationToken cancellationToken = default);
 }

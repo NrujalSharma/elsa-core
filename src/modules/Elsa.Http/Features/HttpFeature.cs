@@ -6,6 +6,7 @@ using Elsa.Features.Services;
 using Elsa.Http.ContentWriters;
 using Elsa.Http.Contracts;
 using Elsa.Http.Handlers;
+using Elsa.Http.HostedServices;
 using Elsa.Http.Models;
 using Elsa.Http.Options;
 using Elsa.Http.Parsers;
@@ -69,11 +70,18 @@ public class HttpFeature : FeatureBase
                 typeof(RouteData),
                 typeof(HttpRequest),
                 typeof(HttpResponse),
+                typeof(HttpResponseMessage),
                 typeof(HttpRequestHeaders)
             }, "HTTP");
 
             management.AddActivitiesFrom<HttpFeature>();
         });
+    }
+
+    /// <inheritdoc />
+    public override void ConfigureHostedServices()
+    {
+        ConfigureHostedService<UpdateRouteTableHostedService>();
     }
 
     /// <inheritdoc />

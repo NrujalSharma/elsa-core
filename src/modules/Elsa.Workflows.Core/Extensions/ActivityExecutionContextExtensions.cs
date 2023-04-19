@@ -6,12 +6,14 @@ using Elsa.Common.Contracts;
 using Elsa.Expressions.Contracts;
 using Elsa.Expressions.Helpers;
 using Elsa.Expressions.Models;
+using Elsa.Mediator.Contracts;
 using Elsa.Workflows.Core.Activities.Flowchart.Models;
 using Elsa.Workflows.Core.Attributes;
 using Elsa.Workflows.Core.Contracts;
 using Elsa.Workflows.Core.Models;
+using Elsa.Workflows.Core.Notifications;
 using Elsa.Workflows.Core.Signals;
-using Microsoft.Extensions.Logging;
+using JetBrains.Annotations;
 
 // ReSharper disable once CheckNamespace
 namespace Elsa.Extensions;
@@ -19,6 +21,7 @@ namespace Elsa.Extensions;
 /// <summary>
 /// Provides extension methods for <see cref="ActivityExecutionContext"/>.
 /// </summary>
+[PublicAPI]
 public static class ActivityExecutionContextExtensions
 {
     /// <summary>
@@ -97,9 +100,26 @@ public static class ActivityExecutionContextExtensions
         return logEntry;
     }
 
-    public static Variable SetVariable(this ActivityExecutionContext context, string name, object? value, Type? storageDriverType = default, Action<MemoryBlock>? configure = default) => 
+    /// <summary>
+    /// Sets a workflow variable by name.
+    /// </summary>
+    /// <param name="context">The <see cref="ActivityExecutionContext"/> being extended.</param>
+    /// <param name="name">The name of the variable.</param>
+    /// <param name="value">The value of the variable.</param>
+    /// <param name="storageDriverType">The type of the storage driver to use.</param>
+    /// <param name="configure">A callback to configure the memory block.</param>
+    /// <returns>The created <see cref="Variable"/>.</returns>
+    public static Variable SetVariable(this ActivityExecutionContext context, string name, object? value, Type? storageDriverType = default, Action<MemoryBlock>? configure = default) =>
         context.ExpressionExecutionContext.SetVariable(name, value, storageDriverType, configure);
-    public static T? GetVariable<T>(this ActivityExecutionContext context, string id) => context.ExpressionExecutionContext.GetVariable<T?>(id);
+
+    /// <summary>
+    /// Sets a workflow variable by name.
+    /// </summary>
+    /// <param name="context">The <see cref="ActivityExecutionContext"/> being extended.</param>
+    /// <param name="name">The name of the variable.</param>
+    /// <typeparam name="T">The type of the variable.</typeparam>
+    /// <returns>The variable if found, otherwise null.</returns>
+    public static T? GetVariable<T>(this ActivityExecutionContext context, string name) => context.ExpressionExecutionContext.GetVariable<T?>(name);
 
     /// <summary>
     /// Returns a dictionary of variable keys and their values across scopes.
@@ -119,9 +139,8 @@ public static class ActivityExecutionContextExtensions
             .GetWrappedInputProperties(activity)
             .Where(x => x.Value is { MemoryBlockReference: { } })
             .ToDictionary(x => x.Key, x => x.Value);
-        
+
         var evaluator = context.GetRequiredService<IExpressionEvaluator>();
-        var stateSerializer = context.GetRequiredService<IActivityStateSerializer>();
         var expressionExecutionContext = context.ExpressionExecutionContext;
 
         foreach (var input in wrappedInputs)
@@ -131,12 +150,9 @@ public static class ActivityExecutionContextExtensions
             memoryReference.Set(context, value);
 
             // Store the evaluated input value in the activity state.
-            var serializedValue = await stateSerializer.SerializeAsync(value);
-            
-            if(serializedValue.ValueKind != JsonValueKind.Undefined)
-                context.ActivityState[input.Key] = serializedValue;
+            context.ActivityState[input.Key] = value!;
         }
-        
+
         context.SetHasEvaluatedProperties();
     }
 
@@ -191,6 +207,12 @@ public static class ActivityExecutionContextExtensions
         await context.ScheduleActivityAsync(activity, context);
     }
 
+    /// <summary>
+    /// Returns the outcome name for the specified port property name.
+    /// </summary>
+    /// <param name="context">The <see cref="ActivityExecutionContext"/> being extended.</param>
+    /// <param name="portPropertyName">The name of the port property.</param>
+    /// <returns>The outcome name.</returns>
     public static string GetOutcomeName(this ActivityExecutionContext context, string portPropertyName)
     {
         var owner = context.Activity;
@@ -205,6 +227,13 @@ public static class ActivityExecutionContextExtensions
         return portProperty.GetCustomAttribute<PortAttribute>()?.Name ?? portProperty.Name;
     }
 
+    /// <summary>
+    /// Evaluates the specified input and sets the result in the activity execution context's memory space.
+    /// </summary>
+    /// <param name="context">The <see cref="ActivityExecutionContext"/> being extended.</param>
+    /// <param name="input">The input to evaluate.</param>
+    /// <typeparam name="T">The type of the input.</typeparam>
+    /// <returns>The evaluated value.</returns>
     public static async Task<T?> EvaluateAsync<T>(this ActivityExecutionContext context, Input<T> input)
     {
         var evaluator = context.GetRequiredService<IExpressionEvaluator>();
@@ -293,11 +322,12 @@ public static class ActivityExecutionContextExtensions
     /// </summary>
     public static async Task CancelActivityAsync(this ActivityExecutionContext context)
     {
+        var publisher = context.GetRequiredService<IEventPublisher>();
         context.ClearBookmarks();
+        context.WorkflowExecutionContext.Bookmarks.RemoveWhere(x => x.ActivityNodeId == context.NodeId);
         await context.SendSignalAsync(new CancelSignal());
+        await publisher.PublishAsync(new ActivityCancelled(context));
     }
-
-    public static ILogger GetLogger(this ActivityExecutionContext context) => (ILogger)context.GetRequiredService(typeof(ILogger<>).MakeGenericType(context.Activity.GetType()));
 
     internal static bool GetHasEvaluatedProperties(this ActivityExecutionContext context) => context.TransientProperties.TryGetValue<bool>("HasEvaluatedProperties", out var value) && value;
     internal static void SetHasEvaluatedProperties(this ActivityExecutionContext context) => context.TransientProperties["HasEvaluatedProperties"] = true;
