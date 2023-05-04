@@ -6,7 +6,7 @@ namespace Elsa.Workflows.Core.Serialization.ReferenceHandlers;
 /// <summary>
 /// A custom reference resolver that uses a <see cref="ReferenceEqualityComparer"/> to compare objects.
 /// </summary>
-/// <remarks>We only need this class because the built-in <see cref="PreserveReferenceResolver"/> is internal</remarks>
+/// <remarks>We only need this class because the built-in <c>PreserveReferenceResolver"</c> is internal</remarks>
 public class CustomPreserveReferenceResolver : ReferenceResolver
 {
     private uint _referenceCount;
@@ -41,4 +41,11 @@ public class CustomPreserveReferenceResolver : ReferenceResolver
     /// <inheritdoc />
     public override object ResolveReference(string referenceId) =>
         !_referenceIdToObjectMap.TryGetValue(referenceId, out var value) ? throw new JsonException() : value;
+    
+    /// <summary>
+    /// Determines whether the specified value has a reference.
+    /// </summary>
+    /// <param name="value">The value.</param>
+    /// <returns><c>true</c> if the specified value has a reference; otherwise, <c>false</c>.</returns>
+    public bool HasReference(object value) => _objectToReferenceIdMap.ContainsKey(value);
 }

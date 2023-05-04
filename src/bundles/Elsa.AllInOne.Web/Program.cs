@@ -1,11 +1,8 @@
 using Elsa.EntityFrameworkCore.Extensions;
 using Elsa.Extensions;
-using Elsa.Identity;
-using Elsa.EntityFrameworkCore.Modules.Labels;
 using Elsa.EntityFrameworkCore.Modules.Management;
 using Elsa.EntityFrameworkCore.Modules.Runtime;
-using Elsa.Requirements;
-using Microsoft.AspNetCore.Authorization;
+using Elsa.Webhooks.Extensions;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,13 +16,13 @@ var identityTokenSection = identitySection.GetSection("Tokens");
 // Add Elsa services.
 services
     .AddElsa(elsa => elsa
-        .UseWorkflows()
-        .UseWorkflowsApi()
         .UseIdentity(identity =>
         {
             identity.IdentityOptions = options => identitySection.Bind(options);
             identity.TokenOptions = options => identityTokenSection.Bind(options);
-            identity.UseAdminUserProvider();
+            identity.UseConfigurationBasedUserProvider(options => identitySection.Bind(options));
+            identity.UseConfigurationBasedApplicationProvider(options => identitySection.Bind(options));
+            identity.UseConfigurationBasedRoleProvider(options => identitySection.Bind(options));
         })
         .UseDefaultAuthentication()
         .UseWorkflowManagement(management => management.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)))
@@ -35,17 +32,16 @@ services
             runtime.UseExecutionLogRecords(e => e.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)));
             runtime.UseAsyncWorkflowStateExporter();
         })
-        .UseLabels(labels => labels.UseEntityFrameworkCore(ef => ef.UseSqlite(sqliteConnectionString)))
         .UseScheduling()
         .UseJavaScript()
         .UseLiquid()
         .UseHttp()
         .UseEmail(email => email.ConfigureOptions = options => configuration.GetSection("Smtp").Bind(options))
+        .UseWebhooks(webhooks => webhooks.WebhookOptions = options => builder.Configuration.GetSection("Webhooks").Bind(options))
+        .UseWorkflowsApi()
     );
 
 services.AddHealthChecks();
-services.AddSingleton<IAuthorizationHandler, LocalHostRequirementHandler>();
-services.AddAuthorization(options => options.AddPolicy(IdentityPolicyNames.SecurityRoot, policy => policy.AddRequirements(new LocalHostRequirement())));
 services.AddCors(cors => cors.AddDefaultPolicy(policy => policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
 
 // Razor Pages.
@@ -63,6 +59,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.MapHealthChecks("/health");
 app.UseCors();
 app.UseStaticFiles();
 app.UseRouting();

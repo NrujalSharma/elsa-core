@@ -38,9 +38,14 @@ public static class ServiceProviderExtensions
     {
         var json = await File.ReadAllTextAsync(fileName);
         var serializer = services.GetRequiredService<IActivitySerializer>();
-        var workflowDefinitionRequest = serializer.Deserialize<SaveWorkflowDefinitionRequest>(json);
+        var model = serializer.Deserialize<WorkflowDefinitionModel>(json);
 
-        workflowDefinitionRequest.Publish = true;
+        var workflowDefinitionRequest = new SaveWorkflowDefinitionRequest
+        {
+            Model = model,
+            Publish = true
+        };
+        
         var workflowDefinitionImporter = services.GetRequiredService<IWorkflowDefinitionImporter>();
         return await workflowDefinitionImporter.ImportAsync(workflowDefinitionRequest);
     }
@@ -62,13 +67,13 @@ public static class ServiceProviderExtensions
         while (bookmarks.TryPop(out var bookmark))
         {
             var resumeOptions = new ResumeWorkflowRuntimeOptions(BookmarkId: bookmark.Id);
-            var resumeResult = await workflowRuntime.ResumeWorkflowAsync(result.InstanceId, resumeOptions);
+            var resumeResult = await workflowRuntime.ResumeWorkflowAsync(result.WorkflowInstanceId, resumeOptions);
 
             foreach (var newBookmark in resumeResult.Bookmarks)
                 bookmarks.Push(newBookmark);
         }
 
         // Return the workflow state.
-        return (await workflowRuntime.ExportWorkflowStateAsync(result.InstanceId))!;
+        return (await workflowRuntime.ExportWorkflowStateAsync(result.WorkflowInstanceId))!;
     }
 }

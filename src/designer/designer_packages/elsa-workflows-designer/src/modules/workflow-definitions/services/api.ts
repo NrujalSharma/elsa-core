@@ -49,7 +49,7 @@ export class WorkflowDefinitionsApi {
     //TODO: Written as a workaround for different server and client models.
     //To be deleted after the port model on backend is updated.
     const requestClone = cloneDeep(request);
-    removeGuidsFromPortNames(requestClone.root);
+    removeGuidsFromPortNames(requestClone.model.root);
 
     const httpClient = await this.getHttpClient();
     const response = await httpClient.post<WorkflowDefinition>('workflow-definitions', requestClone);
@@ -174,23 +174,19 @@ export class WorkflowDefinitionsApi {
     return response.data;
   }
 
+  async updateWorkflowReferences(request: UpdateWorkflowReferencesRequest): Promise<UpdateWorkflowReferencesResponse> {
+    const httpClient = await this.getHttpClient();
+    const response = await httpClient.post<UpdateWorkflowReferencesResponse>(`workflow-definitions/${request.definitionId}/update-references`, request);
+    return response.data;
+  }
+
   private getHttpClient = async () => await this.provider.getHttpClient();
 }
 
 
 export interface SaveWorkflowDefinitionRequest {
-  definitionId: string;
-  version?: number;
-  name?: string;
-  description?: string;
+  model: WorkflowDefinition;
   publish: boolean;
-  root?: Activity;
-  variables?: Array<Variable>;
-  inputs?: Array<InputDefinition>;
-  outputs?: Array<InputDefinition>;
-  outcomes?: Array<string>;
-  options?: WorkflowOptions;
-  usableAsActivity?: boolean;
 }
 
 export interface BaseManyWorkflowDefinitionRequest {
@@ -282,4 +278,13 @@ export interface UnpublishManyWorkflowDefinitionResponse {
   retracted: string[];
   notPublished: string[];
   notFound: string[];
+}
+
+export interface UpdateWorkflowReferencesRequest {
+  definitionId: string;
+  consumingWorkflowIds?: Array<string>;
+}
+
+export interface UpdateWorkflowReferencesResponse {
+  affectedWorkflows: Array<string>;
 }

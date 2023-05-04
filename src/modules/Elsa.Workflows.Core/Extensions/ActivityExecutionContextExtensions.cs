@@ -54,6 +54,18 @@ public static class ActivityExecutionContextExtensions
         var wellKnownTypeRegistry = context.GetRequiredService<IWellKnownTypeRegistry>();
         return context.Input[key].ConvertTo<T>(new ObjectConverterOptions(serializerOptions, wellKnownTypeRegistry))!;
     }
+    
+    /// <summary>
+    /// Sets the Result property of the specified activity.
+    /// </summary>
+    /// <param name="context">The <see cref="ActivityExecutionContext"/></param> being extended.
+    /// <param name="value">The value to set.</param>
+    /// <exception cref="Exception">Thrown when the specified activity does not implement <see cref="IActivityWithResult"/>.</exception>
+    public static void SetResult(this ActivityExecutionContext context, object? value)
+    {
+        var activity = context.Activity as IActivityWithResult ?? throw new Exception($"Cannot set result on activity {context.Activity.Id} because it does not implement {nameof(IActivityWithResult)}.");
+        context.Set(activity.Result, value);
+    }
 
     /// <summary>
     /// Returns true if this activity is triggered for the first time and not being resumed.
@@ -134,24 +146,10 @@ public static class ActivityExecutionContextExtensions
         var activity = context.Activity;
         var activityRegistry = context.GetRequiredService<IActivityRegistry>();
         var activityDescriptor = activityRegistry.Find(activity.Type) ?? throw new Exception("Activity descriptor not found");
+        var wrappedInputs = activityDescriptor.GetWrappedInputPropertyDescriptors(activity);
 
-        var wrappedInputs = activityDescriptor
-            .GetWrappedInputProperties(activity)
-            .Where(x => x.Value is { MemoryBlockReference: { } })
-            .ToDictionary(x => x.Key, x => x.Value);
-
-        var evaluator = context.GetRequiredService<IExpressionEvaluator>();
-        var expressionExecutionContext = context.ExpressionExecutionContext;
-
-        foreach (var input in wrappedInputs)
-        {
-            var memoryReference = input.Value!.MemoryBlockReference();
-            var value = await evaluator.EvaluateAsync(input.Value, expressionExecutionContext);
-            memoryReference.Set(context, value);
-
-            // Store the evaluated input value in the activity state.
-            context.ActivityState[input.Key] = value!;
-        }
+        foreach (var inputDescriptor in wrappedInputs) 
+            await EvaluateInputPropertyAsync(context, activityDescriptor, inputDescriptor);
 
         context.SetHasEvaluatedProperties();
     }
@@ -163,31 +161,54 @@ public static class ActivityExecutionContextExtensions
     {
         var inputName = propertyExpression.GetProperty()!.Name;
         var input = await EvaluateInputPropertyAsync(context, inputName);
-        return context.Get((Input<T>)input);
+        return input != null ? context.Get((Input<T>)input) : default;
     }
 
     /// <summary>
     /// Evaluates a specific input property of the activity.
     /// </summary>
-    public static async Task<Input> EvaluateInputPropertyAsync(this ActivityExecutionContext context, string inputName)
+    public static async Task<Input?> EvaluateInputPropertyAsync(this ActivityExecutionContext context, string inputName)
     {
         var activity = context.Activity;
         var activityRegistry = context.GetRequiredService<IActivityRegistry>();
         var activityDescriptor = activityRegistry.Find(activity.Type) ?? throw new Exception("Activity descriptor not found");
-        var input = activityDescriptor.GetWrappedInputProperty(activity, inputName);
+        var inputDescriptor = activityDescriptor.GetWrappedInputPropertyDescriptor(activity, inputName);
 
-        if (input == null)
+        if (inputDescriptor == null)
             throw new Exception($"No input with name {inputName} could be found");
 
-        if (input.MemoryBlockReference == null!)
-            throw new Exception("Input not initialized");
+        return await EvaluateInputPropertyAsync(context, activityDescriptor, inputDescriptor);
+    }
+    
+    private static async Task<Input?> EvaluateInputPropertyAsync(this ActivityExecutionContext context, ActivityDescriptor activityDescriptor, InputDescriptor inputDescriptor)
+    {
+        var activity = context.Activity;
+        var defaultValue = inputDescriptor.DefaultValue;
+        var value = defaultValue;
+        var input = inputDescriptor.ValueGetter(activity) as Input;
 
-        var evaluator = context.GetRequiredService<IExpressionEvaluator>();
-        var expressionExecutionContext = context.ExpressionExecutionContext;
-        var memoryBlockReference = input.MemoryBlockReference();
-        var value = await evaluator.EvaluateAsync(input, expressionExecutionContext);
-        memoryBlockReference.Set(context, value);
+        if (defaultValue != null && input == null)
+        {
+            var typedInput = typeof(Input<>).MakeGenericType(inputDescriptor.Type);
+            var valueExpression = new Literal(defaultValue)
+            {
+                Id = Guid.NewGuid().ToString()
+            };
+            input = (Input)Activator.CreateInstance(typedInput, valueExpression)!;
+            inputDescriptor.ValueSetter(activity, input);
+        }
+        else
+        {
+            var evaluator = context.GetRequiredService<IExpressionEvaluator>();
+            var expressionExecutionContext = context.ExpressionExecutionContext;
+            value = input != null ? await evaluator.EvaluateAsync(input, expressionExecutionContext) : defaultValue;
+        }
+            
+        var memoryReference = input?.MemoryBlockReference();
+        memoryReference?.Set(context, value);
 
+        // Store the evaluated input value in the activity state.
+        context.ActivityState[inputDescriptor.Name] = value!;
         return input;
     }
 
@@ -327,6 +348,35 @@ public static class ActivityExecutionContextExtensions
         context.WorkflowExecutionContext.Bookmarks.RemoveWhere(x => x.ActivityNodeId == context.NodeId);
         await context.SendSignalAsync(new CancelSignal());
         await publisher.PublishAsync(new ActivityCancelled(context));
+    }
+    
+    /// <summary>
+    /// Returns a the first context that is associated with a <see cref="IVariableContainer"/>.
+    /// </summary>
+    public static ActivityExecutionContext? FindParentWithVariableContainer(this ActivityExecutionContext context)
+    {
+        return context.FindParent(x => x.Activity is IVariableContainer);
+    }
+    
+    /// <summary>
+    /// Returns the first context in the hierarchy that matches the specified predicate.
+    /// </summary>
+    /// <param name="context">The context to start searching from.</param>
+    /// <param name="predicate">The predicate to match.</param>
+    /// <returns>The first context that matches the predicate or <c>null</c> if no match was found.</returns>
+    public static ActivityExecutionContext? FindParent(this ActivityExecutionContext context, Func<ActivityExecutionContext, bool> predicate)
+    {
+        var currentContext = context;
+
+        while (currentContext != null)
+        {
+            if (predicate(currentContext))
+                return currentContext;
+
+            currentContext = currentContext.ParentActivityExecutionContext;
+        }
+
+        return null;
     }
 
     internal static bool GetHasEvaluatedProperties(this ActivityExecutionContext context) => context.TransientProperties.TryGetValue<bool>("HasEvaluatedProperties", out var value) && value;

@@ -1,7 +1,9 @@
 using Elsa.Common.Models;
 using Elsa.Extensions;
+using Elsa.Workflows.Core.Attributes;
 using Elsa.Workflows.Core.Contracts;
 using Elsa.Workflows.Core.Models;
+using Elsa.Workflows.Core.Notifications;
 using Elsa.Workflows.Management.Contracts;
 using Elsa.Workflows.Management.Entities;
 using Humanizer;
@@ -48,9 +50,7 @@ public class WorkflowDefinitionActivityProvider : IActivityProvider
         
         var latestPublishedVersion = allDefinitions
             .Where(x => x.DefinitionId == definition.DefinitionId && x.IsPublished)
-            .Select(x => x.Version)
-            .OrderByDescending(x => x)
-            .FirstOrDefault();
+            .MaxBy(x => x.Version);
 
         var ports = definition.Outcomes.Select(outcome => new Port
         {
@@ -82,14 +82,20 @@ public class WorkflowDefinitionActivityProvider : IActivityProvider
             Inputs = DescribeInputs(definition).ToList(),
             Outputs = DescribeOutputs(definition).ToList(),
             Ports = ports,
-            CustomProperties = { ["RootType"] = nameof(WorkflowDefinitionActivity) },
+            CustomProperties =
+            {
+                ["RootType"] = nameof(WorkflowDefinitionActivity),
+                ["WorkflowDefinitionVersionId"] = definition.Id
+            },
             Constructor = context =>
             {
                 var activity = (WorkflowDefinitionActivity)_activityFactory.Create(typeof(WorkflowDefinitionActivity), context);
                 activity.Type = typeName;
                 activity.WorkflowDefinitionId = definition.DefinitionId;
+                activity.WorkflowDefinitionVersionId = definition.Id;
                 activity.Version = definition.Version;
-                activity.LatestAvailablePublishedVersion = latestPublishedVersion;
+                activity.LatestAvailablePublishedVersion = latestPublishedVersion?.Version ?? 0;
+                activity.LatestAvailablePublishedVersionId = latestPublishedVersion?.Id;
 
                 return activity;
             }
@@ -107,6 +113,7 @@ public class WorkflowDefinitionActivityProvider : IActivityProvider
                 Type = nakedType,
                 IsWrapped = true,
                 ValueGetter = activity => ((WorkflowDefinitionActivity)activity).SyntheticProperties.GetValueOrDefault(inputDefinition.Name),
+                ValueSetter = (activity, value) => ((WorkflowDefinitionActivity)activity).SyntheticProperties[inputDefinition.Name] = value!,
                 Name = inputDefinition.Name,
                 DisplayName = inputDefinition.DisplayName,
                 Description = inputDefinition.Description,
@@ -130,6 +137,7 @@ public class WorkflowDefinitionActivityProvider : IActivityProvider
             {
                 Type = nakedType,
                 ValueGetter = activity => ((WorkflowDefinitionActivity)activity).SyntheticProperties.GetValueOrDefault(outputDefinition.Name),
+                ValueSetter = (activity, value) => ((WorkflowDefinitionActivity)activity).SyntheticProperties[outputDefinition.Name] = value!,
                 Name = outputDefinition.Name,
                 DisplayName = outputDefinition.DisplayName,
                 Description = outputDefinition.Description,

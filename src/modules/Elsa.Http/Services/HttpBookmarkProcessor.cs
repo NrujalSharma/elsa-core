@@ -1,6 +1,8 @@
 using Elsa.Common.Models;
 using Elsa.Http.Contracts;
 using Elsa.Workflows.Core.Helpers;
+using Elsa.Workflows.Core.State;
+using Elsa.Workflows.Management.Contracts;
 using Elsa.Workflows.Runtime.Contracts;
 using Microsoft.AspNetCore.Http;
 
@@ -30,7 +32,7 @@ public class HttpBookmarkProcessor : IHttpBookmarkProcessor
     }
     
     /// <inheritdoc />
-    public async Task ProcessBookmarks(
+    public async Task<IEnumerable<WorkflowState>> ProcessBookmarks(
         IEnumerable<WorkflowExecutionResult> executionResults,
         string? correlationId,
         IDictionary<string, object>? input,
@@ -51,9 +53,10 @@ public class HttpBookmarkProcessor : IHttpBookmarkProcessor
             from executionResult in executionResults
             from bookmark in executionResult.Bookmarks
             where bookmark.Name == writeHttpResponseTypeName || bookmark.Name == httpEndpointTypeName
-            select (executionResult.InstanceId, bookmark.Id);
+            select (InstanceId: executionResult.WorkflowInstanceId, bookmark.Id);
 
         var workflowExecutionResults = new Stack<(string InstanceId, string BookmarkId)>(query);
+        var workflowStates = new List<WorkflowState>();
 
         while (workflowExecutionResults.TryPop(out var result))
         {
@@ -86,9 +89,13 @@ public class HttpBookmarkProcessor : IHttpBookmarkProcessor
             var workflowHost = await _workflowHostFactory.CreateAsync(workflow, workflowState, cancellationToken);
             var options = new ResumeWorkflowHostOptions(correlationId, result.BookmarkId, Input: input);
             await workflowHost.ResumeWorkflowAsync(options, cancellationToken);
-
+            
             // Import the updated workflow state into the runtime.
+            workflowState = workflowHost.WorkflowState;
             await _workflowRuntime.ImportWorkflowStateAsync(workflowState, cancellationToken);
+            workflowStates.Add(workflowState);
         }
+
+        return workflowStates;
     }
 }
